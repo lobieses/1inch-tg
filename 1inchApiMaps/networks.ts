@@ -1,4 +1,6 @@
-export const chainsData = {
+import {IChainsData} from '../services/modules';
+
+export const chainsData: IChainsData = {
     '1': {
         CHAIN_NAME: 'Ethereum',
     },

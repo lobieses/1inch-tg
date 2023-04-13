@@ -1,11 +1,20 @@
 import https from 'https';
+import {IncomingMessage} from 'http';
 import {fetchTokens, requestQuote} from '../heplers/requestCreator';
-import {TokenAddresses, USDTAddresses, tokensToFind, TTokensToFind} from '../1inchApiMaps/tokenAddresses';
+import {tokensToFind} from '../1inchApiMaps/tokenAddresses';
 import {withDecimals, withoutDecimals, percentageDifference, findExtremes} from '../heplers/math';
 import {chainsData} from '../1inchApiMaps/networks';
 
 import dotenv from 'dotenv';
-import {TFetchedTokensListByNetwork, TTokensToFetch} from './modules';
+import {
+  IChainsData, IComparedTokens,
+  IFetchedTokens,
+  IFetchedTokensListByNetwork, ITokensData,
+  ITokensToFetch,
+  ITokensToFind,
+  IUSDTTokensToFetch
+} from './modules';
+
 
 dotenv.config();
 const {QUEUE_STEP, SLEEP_PERIOD_IN_MS, CHECK_PERIOD_IN_MS} = process.env;
@@ -20,35 +29,36 @@ interface ITokenData {
 
 class PriceCheckerSvc {
   needToCheckPrices: boolean;
-  fetchedAddresses;
-  tokenAddresses: any;
-  USDTAddresses;
-  tokensToFind: typeof tokensToFind;
-  triggerFn: any;
-  chainsData: typeof chainsData;
-  queue: any;
+  tokensToFind: ITokensToFind;
+  tokensToFetch: ITokensToFetch | null;
+  USDTToFetch: IUSDTTokensToFetch | null;
+  triggerFn: ((triggeredTokens: IComparedTokens) => void) | null;
+  chainsData: IChainsData;
+  queue: {
+    current: number,
+    max: number
+  };
 
   constructor() {
     this.needToCheckPrices = false;
-    this.fetchedAddresses = {};
-    this.tokenAddresses = TokenAddresses;
-    this.USDTAddresses = USDTAddresses;
+    this.tokensToFetch = null;
+    this.USDTToFetch = null;
     this.tokensToFind = tokensToFind
     this.triggerFn = null;
     this.chainsData = chainsData;
     this.queue = {
       current: 0,
-      max: Object.keys(TokenAddresses).length
+      max: 0
     }
   }
 
   async fetchAddresses() {
-    const tokens = (Object.keys(this.chainsData) as (keyof typeof chainsData)[]).reduce((acc, networkId) => {
+    const tokens = Object.keys(this.chainsData).reduce((acc, networkId) => {
       acc[networkId] = {};
       return acc;
-    }, {} as TFetchedTokensListByNetwork)
+    }, {} as IFetchedTokensListByNetwork)
 
-    const promises = (Object.keys(this.chainsData) as (keyof typeof chainsData)[]).map((network) => {
+    const promises = Object.keys(this.chainsData).map((network) => {
       return new Promise<void>((resolve, reject) => {
         https.get(fetchTokens(network), (resp) => {
           let response = '';
@@ -63,7 +73,7 @@ class PriceCheckerSvc {
               reject();
               return
             }
-            tokens[network] = JSON.parse(response).tokens as ITokenData
+            tokens[network] = JSON.parse(response).tokens as { [key: string]: ITokenData }
             resolve();
           });
         })
@@ -78,39 +88,53 @@ class PriceCheckerSvc {
     });
   }
 
-  prepareFetchedAddresses(data: TFetchedTokensListByNetwork) {
-    const networkIds = Object.keys(this.chainsData) as (keyof typeof chainsData)[];
-
-    const result = (Object.keys(this.tokensToFind) as (keyof typeof tokensToFind)[]).reduce((acc, symbol) => {
+  prepareFetchedAddresses(data: IFetchedTokensListByNetwork) {
+    const result = Object.keys(this.tokensToFind).reduce((acc, symbol) => {
       acc[symbol] = {};
       return acc;
-    }, {} as TTokensToFetch);
+    }, {} as ITokensToFetch);
 
-    (Object.keys(data) as (keyof typeof chainsData)[]).forEach((networkId) => {
+    Object.keys(data).forEach((networkId) => {
       const networkTokens = Object.values(data[networkId]) as unknown as ITokenData[];
-      (Object.keys(this.tokensToFind) as (keyof typeof tokensToFind)[]).forEach(symbol => {
+      Object.keys(this.tokensToFind).forEach(symbol => {
         const foundSymbol = networkTokens.find(
           (token) => {
-            // @ts-ignore
-            return token.symbol === (this.tokensToFetch[symbol][networkId] !== undefined ? this.tokensToFetch[symbol][networkId] : symbol)
+            return token.symbol === (this.tokensToFind[symbol][networkId] !== undefined ? this.tokensToFind[symbol][networkId] : symbol)
           }
         )
-        // if (networkId === '1' && foundSymbol) {
-        //   result[symbol].de = foundSymbol.
-        // }
-        //
-        // if (foundSymbol) {
-        //   result[symbol] =
-        // }
 
-        console.log(foundSymbol);
+        if (foundSymbol) {
+          result[symbol][networkId] = {
+            address: foundSymbol.address,
+            decimals: foundSymbol.decimals,
+            symbol: this.tokensToFind[symbol][networkId]
+          }
+
+        }
       })
     })
 
-    console.log(data);
-    // Object.keys(data).reduce((acc, {address, symbol, decimals}) => {
-    //
-    // }, {})
+    const {USDTToFetch, TokensToFetch} = Object.keys(result).reduce((acc, symbol) => {
+      if (symbol !== 'USDT') {
+        acc.TokensToFetch[symbol] = result[symbol]
+      } else {
+        acc.USDTToFetch = result[symbol]
+      }
+
+      return acc
+    }, {
+      USDTToFetch: {},
+      TokensToFetch: {}
+    } as {
+      USDTToFetch: IUSDTTokensToFetch,
+      TokensToFetch: ITokensToFetch
+    })
+
+    console.log(TokensToFetch);
+
+    this.tokensToFetch = TokensToFetch;
+    this.USDTToFetch = USDTToFetch;
+    this.queue.max = Object.keys(this.tokensToFetch).length;
   }
 
   sleep(ms: number) {
@@ -122,7 +146,7 @@ class PriceCheckerSvc {
   }
 
   nextQueueStep() {
-    const nextQueue = (Object.keys(this.tokenAddresses) as (keyof typeof TokenAddresses)[]).slice(
+    const nextQueue = Object.keys(this.tokensToFetch || []).slice(
       this.queue.current,
       this.queue.current + Number(QUEUE_STEP) >= this.queue.max ? this.queue.max : this.queue.current + Number(QUEUE_STEP)
     );
@@ -136,56 +160,58 @@ class PriceCheckerSvc {
     this.queue.current = this.queue.current - Number(QUEUE_STEP);
   }
 
-  startPriceChecking(sendPriceDifferenceTrigger: any) {
+  startPriceChecking(sendPriceDifferenceTrigger: (triggeredTokens: IComparedTokens) => void) {
     this.triggerFn = sendPriceDifferenceTrigger;
     this.checkPricesByQueue();
   }
 
   checkPricesByQueue() {
-    if (!this.needToCheckPrices || !this.triggerFn) return;
+    if (!this.needToCheckPrices) return;
     setTimeout(async () => {
+      if (!this.triggerFn) return
       const prices = await this.checkPrices();
-      // console.log('prices', prices);
+      if (!prices) return;
       const comparedPrices = this.comparePrices(prices);
+      // @ts-ignore
       if (Object.keys(comparedPrices).length) this.triggerFn(comparedPrices);
     }, CHECK_PERIOD_IN_MS as unknown as number);
   }
 
-  async checkPrices() {
-    const nextQueue = this.nextQueueStep();
-    console.log(nextQueue);
+  async sendRequests(
+    tokensToFetch: string[],
+    tokensData: {
+      [key: string]: {
+        [key: string]: {
+          from: any,
+          to: any
+        }
+      }
+    }
+  ) {
 
-    const responseData = nextQueue.reduce((acc, elem) => {
-      acc[elem] = {};
+    const responseData = tokensToFetch.reduce((acc, symbol) => {
+      acc[symbol] = {};
       return acc;
-    }, {} as any);
-
-    let hasErrors = false;
-
-    const promises = nextQueue.reduce((acc, tokenSymbol) => {
-      return [...acc, ...(Object.keys(this.tokenAddresses[tokenSymbol].addresses) as (keyof typeof chainsData)[]).map<Promise<void>>(netId => {
-        const fromTokenData = typeof (this.tokenAddresses[tokenSymbol].addresses[netId]) === 'object'
-          ? this.tokenAddresses[tokenSymbol].addresses[netId]
-          : {
-            decimals: this.tokenAddresses[tokenSymbol].decimals,
-            address: this.tokenAddresses[tokenSymbol].addresses[netId]
-          }
-
-        const toTokenData: any = typeof (this.USDTAddresses.addresses[netId]) === 'object'
-          ? this.USDTAddresses.addresses[netId]
-          : {
-            decimals: this.USDTAddresses.decimals,
-            address: this.USDTAddresses.addresses[netId]
-          }
+    }, {} as {
+      [key: string]: {
+        [key: string]: number
+      }
+    })
 
 
-        return new Promise<void>((resolve, reject) => {
-          https.get(requestQuote(
-            netId, fromTokenData.address, toTokenData.address, withDecimals(1, fromTokenData.decimals)
-          ), (resp) => {
+    const promises = tokensToFetch.reduce((acc, tokenSymbol, amount: number) => {
+      return [...acc, ...Object.keys(this.tokensToFetch ? this.tokensToFetch[tokenSymbol] : []).map<any>((chainId) => {
+
+        if (!tokensData[tokenSymbol][chainId]) return;
+
+        const fromTokenData = tokensData[tokenSymbol][chainId].from;
+        const toTokenData = tokensData[tokenSymbol][chainId].to;
+        return this.createRequest(
+          chainId as unknown as string, fromTokenData.address, toTokenData.address, withDecimals(fromTokenData.amount, fromTokenData.decimals),
+          (resp, resolve, reject) => {
             let response = '';
             resp.setEncoding('utf8');
-            resp.on('data', (chunk) => {
+            resp.on('data', (chunk: string) => {
               response += chunk;
             });
             resp.on('end', () => {
@@ -195,56 +221,158 @@ class PriceCheckerSvc {
                 reject({
                   statusCode,
                   token: tokenSymbol,
-                  network: this.chainsData[netId].CHAIN_NAME
+                  network: this.chainsData[chainId].CHAIN_NAME
                 });
                 return
               }
-              responseData[tokenSymbol][`${this.chainsData[netId].CHAIN_NAME}${fromTokenData.symbol ? '(' + (fromTokenData.symbol) + ')' : ''}`] = withoutDecimals(JSON.parse(response).toTokenAmount, toTokenData.decimals);
+
+              //[`${this.chainsData[chainId].CHAIN_NAME}${fromTokenData.symbol ? '(' + (fromTokenData.symbol) + ')' : ''}`] = withoutDecimals(JSON.parse(response).toTokenAmount, toTokenData.decimals);
+              responseData
+                [tokenSymbol]
+                [this.chainsData[chainId].CHAIN_NAME] = withoutDecimals(JSON.parse(response).toTokenAmount, toTokenData.decimals);
               resolve();
             });
-          })
-        }).catch(({statusCode, token, network}) => {
-          console.log('getError', `${statusCode} ${token} ${network}`);
-          hasErrors = true;
-        })
+          }
+        )
       })]
-    }, [] as Promise<void>[]);
+    }, [] as (Promise<void> | void)[]);
 
-    await Promise.all(promises)
-
-    if (hasErrors) {
-      this.rollbackQueue();
-      console.warn('startSleep')
-      await this.sleep((SLEEP_PERIOD_IN_MS as unknown as number) - (CHECK_PERIOD_IN_MS as unknown as number));
-      console.warn('endSleep')
-    }
-
-
-    this.checkPricesByQueue();
-    const response = hasErrors ? {} : responseData;
-    console.log('responseData', response);
-    return response;
+    await Promise.all(promises);
+    return responseData;
   }
 
-  comparePrices(data: any) {
+  async checkPrices() {
+    if (!this.tokensToFetch || !this.USDTToFetch) {
+      this.rollbackQueue();
+      this.checkPricesByQueue();
+      return null;
+    }
+
+    const nextQueue = this.nextQueueStep();
+    console.log(nextQueue);
+
+    const responseData = nextQueue.reduce<IFetchedTokens>((acc, symbol) => {
+      acc[symbol] = {
+        buy: {},
+        sell: {}
+      };
+      return acc;
+    }, {});
+
+    const {buy, sell} = nextQueue.reduce((acc, tokenSymbol) => {
+      acc.sell[tokenSymbol] = {}
+      acc.buy[tokenSymbol] = {}
+      Object.keys(this.tokensToFetch ? this.tokensToFetch[tokenSymbol] : []).forEach(chainId => {
+
+        acc.buy[tokenSymbol][chainId] = {
+          from: {
+            decimals: this.USDTToFetch?.[chainId].decimals as unknown as number,
+            address: this.USDTToFetch?.[chainId].address as unknown as string,
+            amount: 1000
+          },
+          to: {
+            ...this.tokensToFetch?.[tokenSymbol][chainId]
+          }
+        }
+
+        acc.sell[tokenSymbol][chainId] = {
+          from: {
+            ...this.tokensToFetch?.[tokenSymbol][chainId],
+            amount: null
+          },
+          to: {
+            decimals: this.USDTToFetch?.[chainId].decimals as unknown as number,
+            address: this.USDTToFetch?.[chainId].address as unknown as string
+          }
+        }
+      })
+
+      return acc
+    }, {
+      buy: {},
+      sell: {}
+    } as ITokensData)
+
+    try {
+      const buyFetchedPrices = await this.sendRequests(nextQueue, buy);
+      const sellDataWithCorrectedAmount = Object.keys(sell).reduce((acc, tokenSymbol) => {
+        Object.keys(sell[tokenSymbol]).forEach(chainId => {
+          const largestPriceForBuy = findExtremes(Object.values(buyFetchedPrices[tokenSymbol]))[1];
+          // @ts-ignore
+          acc[tokenSymbol][chainId].from.amount = largestPriceForBuy
+        });
+        return acc
+      }, sell)
+
+      const sellFetchedPrices = await this.sendRequests(nextQueue, sellDataWithCorrectedAmount)
+
+      const finishResponse = Object.keys(responseData).reduce((responses, symbol) => {
+        // @ts-ignore
+        responses[symbol].buy = buyFetchedPrices[symbol];
+        // @ts-ignore
+        responses[symbol].sell = sellFetchedPrices[symbol];
+
+        return responses
+      }, responseData)
+
+
+      this.checkPricesByQueue();
+      console.log('responseData', finishResponse);
+
+      return finishResponse;
+    } catch (e) {
+      console.log('CAUGHT ERROR', e);
+      this.rollbackQueue();
+      console.warn('startSleep');
+      await this.sleep((SLEEP_PERIOD_IN_MS as unknown as number) - (CHECK_PERIOD_IN_MS as unknown as number));
+      console.warn('endSleep');
+      this.checkPricesByQueue();
+      return null
+    }
+  }
+
+  createRequest(
+    chainId: string,
+    fromAddress: string,
+    toAddress: string,
+    amount: number,
+    responseFn: (resp: IncomingMessage, resolve: (value: (void | PromiseLike<void>)) => void, reject: (reason?: any) => void) => void
+  ) {
+    return new Promise<void>((resolve, reject) => {
+      https.get(requestQuote(
+        chainId, fromAddress, toAddress, amount
+      ), (resp) => {
+        console.log(requestQuote(
+          chainId, fromAddress, toAddress, amount
+        ))
+        responseFn(resp, resolve, reject)
+      })
+    })
+  }
+
+  comparePrices(data: IFetchedTokens) {
+    console.log('fetchedData', data)
     return Object.keys(data).reduce((acc, tokenSymbol) => {
-      const pricesArr = Object.values(data[tokenSymbol]);
-      const extremes = findExtremes(pricesArr as any);
-      const percentageDifferenceResult = percentageDifference(extremes[0], extremes[1]);
+      const pricesArrForBuy = Object.values(data[tokenSymbol].buy);
+      const extremesForBuy = findExtremes(pricesArrForBuy);
+      const pricesArrForSell = Object.values(data[tokenSymbol].sell);
+      const extremesForSell = findExtremes(pricesArrForSell);
+      const percentageDifferenceResult = percentageDifference(1000, extremesForSell[1]);
       if (percentageDifferenceResult >= allowablePercentageDifference) {
         acc[tokenSymbol] = {
           min: {
-            network: Object.keys(data[tokenSymbol]).find(network => data[tokenSymbol][network] === extremes[0]),
-            price: extremes[0]
+            network: Object.keys(data[tokenSymbol].buy).find(network => data[tokenSymbol].buy[network] === extremesForBuy[1]) as unknown as string,
+            priceInUsdt: 1000,
+            willGetInToken: extremesForBuy[1]
           },
           max: {
-            network: Object.keys(data[tokenSymbol]).find(network => data[tokenSymbol][network] === extremes[1]),
-            price: extremes[1]
+            network: Object.keys(data[tokenSymbol].sell).find(network => data[tokenSymbol].sell[network] === extremesForSell[1]) as unknown as string,
+            price: extremesForSell[1]
           }
         };
       }
       return acc;
-    }, {} as any)
+    }, {} as IComparedTokens)
   }
 }
 

@@ -3,6 +3,7 @@ import DbSvc from './dbSvc';
 import PriceCheckerSvc from './priceCheckerSvc';
 
 import dotenv from 'dotenv';
+import {IComparedTokens} from './modules';
 dotenv.config();
 
 const {BOT_TOKEN} = process.env;
@@ -13,19 +14,19 @@ class BotSvc {
       this.bot = new Telegraf(BOT_TOKEN as string);
     }
 
-    sendPriceDifferenceTrigger(triggeredTokens: any) {
+    sendPriceDifferenceTrigger(triggeredTokens: IComparedTokens) {
         const listeners = DbSvc.getListeners();
         const response = this.priceDifferenceResponseCreator(triggeredTokens);
-        listeners.forEach((listenerId: any) => this.bot.telegram.sendMessage(listenerId, response));
+        listeners.forEach((listenerId: string) => this.bot.telegram.sendMessage(listenerId, response));
     }
 
-    priceDifferenceResponseCreator(triggeredTokens: any) {
+    priceDifferenceResponseCreator(triggeredTokens: IComparedTokens) {
         return Object.keys(triggeredTokens).reduce((acc, tokenSymbol) => {
             return (
                 acc +
                 `\t${tokenSymbol}\r\n` +
-                `\t\t\t\tMin:   ${triggeredTokens[tokenSymbol].min.network} - ${triggeredTokens[tokenSymbol].min.price}\r\n` +
-                `\t\t\t\tMax:   ${triggeredTokens[tokenSymbol].max.network} - ${triggeredTokens[tokenSymbol].max.price}\r\n\r\n`
+                `\t\t\t\t best for buy: ${triggeredTokens[tokenSymbol].min.network} - ${triggeredTokens[tokenSymbol].min.willGetInToken} ${tokenSymbol} for ${triggeredTokens[tokenSymbol].min.priceInUsdt} USDT\r\n` +
+                `\t\t\t\t best for sell: ${triggeredTokens[tokenSymbol].max.network} - ${triggeredTokens[tokenSymbol].max.price} USDT for ${triggeredTokens[tokenSymbol].min.willGetInToken} ${tokenSymbol} \r\n\r\n`
             )
         }, '⚠ some tokens have difference more than 1% ⚠\n\n');
     }
@@ -34,7 +35,7 @@ class BotSvc {
         // @ts-ignore
       this.bot.launch().then(() => this.bot.start());
 
-        this.bot.start((ctx: any) => ctx.reply(
+        this.bot.start((ctx) => ctx.reply(
             ('Click on "Start listening" in order to take messages about crypto prices difference. \n\n' +
                 ' You will get the message if one of token on multiple networks have difference more or equal 1% between each other'),
             {
@@ -46,7 +47,8 @@ class BotSvc {
             }
         ))
 
-        this.bot.action('start_listening', (ctx: any) => {
+        this.bot.action('start_listening', (ctx) => {
+            if(!ctx.update.callback_query.message) return;
             if (DbSvc.isListenerExist(ctx.update.callback_query.message.chat.id)) {
                 ctx.editMessageText('You already listen prices');
                 return;
@@ -57,7 +59,7 @@ class BotSvc {
           PriceCheckerSvc.changeNeedToCheckPrices(true);
         })
 
-        this.bot.command('start_listening', (ctx: any) => {
+        this.bot.command('start_listening', (ctx) => {
             if (DbSvc.isListenerExist(ctx.update.message.chat.id)) {
                 ctx.reply('You already listen prices');
                 return;
@@ -68,7 +70,7 @@ class BotSvc {
           PriceCheckerSvc.changeNeedToCheckPrices(true);
         })
 
-        this.bot.command('stop_listening', (ctx: any) => {
+        this.bot.command('stop_listening', (ctx) => {
             if (!DbSvc.isListenerExist(ctx.update.message.chat.id)) {
                 ctx.reply("You don't listen prices yet");
                 return;
