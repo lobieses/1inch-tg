@@ -28,7 +28,6 @@ interface ITokenData {
 }
 
 class PriceCheckerSvc {
-  needToCheckPrices: boolean;
   tokensToFind: ITokensToFind;
   tokensToFetch: ITokensToFetch | null;
   USDTToFetch: IUSDTTokensToFetch | null;
@@ -40,7 +39,6 @@ class PriceCheckerSvc {
   };
 
   constructor() {
-    this.needToCheckPrices = false;
     this.tokensToFetch = null;
     this.USDTToFetch = null;
     this.tokensToFind = tokensToFind
@@ -130,7 +128,7 @@ class PriceCheckerSvc {
       TokensToFetch: ITokensToFetch
     })
 
-    console.log(TokensToFetch);
+    console.log('prepared tokens to fetch: ', Object.keys(TokensToFetch));
 
     this.tokensToFetch = TokensToFetch;
     this.USDTToFetch = USDTToFetch;
@@ -139,10 +137,6 @@ class PriceCheckerSvc {
 
   sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  changeNeedToCheckPrices(bol: boolean) {
-    this.needToCheckPrices = bol;
   }
 
   nextQueueStep() {
@@ -166,12 +160,12 @@ class PriceCheckerSvc {
   }
 
   checkPricesByQueue() {
-    if (!this.needToCheckPrices) return;
     setTimeout(async () => {
       if (!this.triggerFn) return
       const prices = await this.checkPrices();
       if (!prices) return;
       const comparedPrices = this.comparePrices(prices);
+      console.log("triggered", comparedPrices);
       // @ts-ignore
       if (Object.keys(comparedPrices).length) this.triggerFn(comparedPrices);
     }, CHECK_PERIOD_IN_MS as unknown as number);
@@ -317,7 +311,6 @@ class PriceCheckerSvc {
 
 
       this.checkPricesByQueue();
-      console.log('responseData', finishResponse);
 
       return finishResponse;
     } catch (e) {
@@ -339,19 +332,19 @@ class PriceCheckerSvc {
     responseFn: (resp: IncomingMessage, resolve: (value: (void | PromiseLike<void>)) => void, reject: (reason?: any) => void) => void
   ) {
     return new Promise<void>((resolve, reject) => {
-      https.get(requestQuote(
-        chainId, fromAddress, toAddress, amount
-      ), (resp) => {
-        console.log(requestQuote(
-          chainId, fromAddress, toAddress, amount
-        ))
-        responseFn(resp, resolve, reject)
-      })
+      try {
+        https.get(requestQuote(
+            chainId, fromAddress, toAddress, amount
+        ), (resp) => {
+          responseFn(resp, resolve, reject)
+        })
+      } catch (e) {
+        console.warn(e);
+      }
     })
   }
 
   comparePrices(data: IFetchedTokens) {
-    console.log('fetchedData', data)
     return Object.keys(data).reduce((acc, tokenSymbol) => {
       const pricesArrForBuy = Object.values(data[tokenSymbol].buy);
       const extremesForBuy = findExtremes(pricesArrForBuy);

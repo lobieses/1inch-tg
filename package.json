@@ -4,12 +4,13 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "start": "nodemon index.ts"
+    "start": "node ./dist/index.js",
+    "start:dev": "nodemon index.ts",
+    "build": "rimraf dist & tsc"
   },
   "author": "lobieses",
   "license": "ISC",
   "dependencies": {
-    "@moralisweb3/common-evm-utils": "^2.18.1",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/express": "types/express",
     "@types/node": "^18.15.11",
+    "rimraf": "^5.0.0",
     "typescript": "^5.0.4"
   }
 }
