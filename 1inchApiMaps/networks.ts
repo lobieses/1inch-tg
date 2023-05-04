@@ -1,4 +1,4 @@
-import {IChainsData} from '../services/modules';
+import { IChainsData } from '../services/modules';
 
 export const chainsData: IChainsData = {
     '1': {
@@ -14,9 +14,9 @@ export const chainsData: IChainsData = {
         CHAIN_NAME: 'Polygon',
     },
     '250': {
-        CHAIN_NAME: 'Fantom'
+        CHAIN_NAME: 'Fantom',
     },
     '56': {
-        CHAIN_NAME: 'Binance'
-    }
-}
+        CHAIN_NAME: 'Binance',
+    },
+};

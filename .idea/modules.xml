@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/tgBot.iml" filepath="$PROJECT_DIR$/.idea/tgBot.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../Wagmi/volume-simulator/.idea/volume-simulator.iml" filepath="$PROJECT_DIR$/../Wagmi/volume-simulator/.idea/volume-simulator.iml" />
     </modules>
   </component>
 </project>

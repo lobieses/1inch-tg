@@ -1,26 +1,33 @@
 {
-  "name": "tgbot",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.ts",
-  "scripts": {
-    "start": "node ./dist/index.js",
-    "start:dev": "nodemon index.ts",
-    "build": "rimraf dist & tsc"
-  },
-  "author": "lobieses",
-  "license": "ISC",
-  "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
-    "express": "^4.18.2",
-    "nodemon": "^2.0.22",
-    "telegraf": "^4.12.2"
-  },
-  "devDependencies": {
-    "@types/express": "types/express",
-    "@types/node": "^18.15.11",
-    "rimraf": "^5.0.0",
-    "typescript": "^5.0.4"
-  }
+    "name": "tgbot",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.ts",
+    "scripts": {
+        "start": "node ./dist/index.js",
+        "start:dev": "nodemon index.ts",
+        "build": "rimraf dist & tsc",
+        "prettier": "prettier --write ."
+    },
+    "author": "lobieses",
+    "license": "ISC",
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dotenv": "^16.0.3",
+        "express": "^4.18.2",
+        "nodemon": "^2.0.22",
+        "telegraf": "^4.12.2"
+    },
+    "devDependencies": {
+        "@types/express": "types/express",
+        "@types/node": "^18.15.11",
+        "rimraf": "^5.0.0",
+        "typescript": "^5.0.4",
+        "@typescript-eslint/eslint-plugin": "^5.0.0",
+        "@typescript-eslint/parser": "^5.0.0",
+        "eslint": "^8.0.1",
+        "eslint-config-prettier": "^8.3.0",
+        "eslint-plugin-prettier": "^4.0.0",
+        "prettier": "^2.3.2"
+    }
 }
