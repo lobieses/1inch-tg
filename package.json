@@ -12,22 +12,25 @@
     "author": "lobieses",
     "license": "ISC",
     "dependencies": {
+        "axios": "^1.4.0",
+        "cloudflare-scraper": "^2.0.0",
         "cors": "^2.8.5",
         "dotenv": "^16.0.3",
         "express": "^4.18.2",
+        "humanoid-js": "^1.0.1",
         "nodemon": "^2.0.22",
         "telegraf": "^4.12.2"
     },
     "devDependencies": {
         "@types/express": "types/express",
         "@types/node": "^18.15.11",
-        "rimraf": "^5.0.0",
-        "typescript": "^5.0.4",
         "@typescript-eslint/eslint-plugin": "^5.0.0",
         "@typescript-eslint/parser": "^5.0.0",
         "eslint": "^8.0.1",
         "eslint-config-prettier": "^8.3.0",
         "eslint-plugin-prettier": "^4.0.0",
-        "prettier": "^2.3.2"
+        "prettier": "^2.3.2",
+        "rimraf": "^5.0.0",
+        "typescript": "^5.0.4"
     }
 }

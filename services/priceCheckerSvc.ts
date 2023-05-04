@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 import { IChainsData, IComparedTokens, IFetchedTokens, IFetchedTokensListByNetwork, ITokensData, ITokensToFetch, ITokensToFind, IUSDTTokensToFetch } from './modules';
 
 dotenv.config();
-const { QUEUE_STEP, SLEEP_PERIOD_IN_MS, CHECK_PERIOD_IN_MS } = process.env;
+const { QUEUE_STEP, SLEEP_PERIOD_AFTER_API_ERROR_IN_MS, CHECK_PERIOD_IN_MS, ACTIVE_WORK_PERIOD_IN_MS, REST_PERIOD_IN_MS, HTTP_PROXY } = process.env;
 
 const allowablePercentageDifference = 1;
 
@@ -29,6 +29,7 @@ class PriceCheckerSvc {
         current: number;
         max: number;
     };
+    activeWorkTimer: Date;
 
     constructor() {
         this.tokensToFetch = null;
@@ -40,6 +41,7 @@ class PriceCheckerSvc {
             current: 0,
             max: 0,
         };
+        this.activeWorkTimer = new Date();
     }
 
     async fetchAddresses() {
@@ -47,6 +49,7 @@ class PriceCheckerSvc {
             acc[networkId] = {};
             return acc;
         }, {} as IFetchedTokensListByNetwork);
+
 
         const promises = Object.keys(this.chainsData).map((network) => {
             return new Promise<void>((resolve, reject) => {
@@ -128,33 +131,15 @@ class PriceCheckerSvc {
         this.queue.max = Object.keys(this.tokensToFetch).length;
     }
 
-    sleep(ms: number) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    nextQueueStep() {
-        const nextQueue = Object.keys(this.tokensToFetch || []).slice(
-            this.queue.current,
-            this.queue.current + Number(QUEUE_STEP) >= this.queue.max ? this.queue.max : this.queue.current + Number(QUEUE_STEP),
-        );
-
-        this.queue.current = this.queue.current + Number(QUEUE_STEP) >= this.queue.max ? 0 : this.queue.current + Number(QUEUE_STEP);
-
-        return nextQueue;
-    }
-
-    rollbackQueue() {
-        this.queue.current = this.queue.current - Number(QUEUE_STEP);
-    }
-
     startPriceChecking(sendPriceDifferenceTrigger: (triggeredTokens: IComparedTokens) => void) {
         this.triggerFn = sendPriceDifferenceTrigger;
         this.checkPricesByQueue();
     }
 
-    checkPricesByQueue() {
+    async checkPricesByQueue() {
         setTimeout(async () => {
             if (!this.triggerFn) return;
+            await this.checkOnRestPeriod();
             const prices = await this.checkPrices();
             if (!prices) return;
             const comparedPrices = this.comparePrices(prices);
@@ -186,7 +171,7 @@ class PriceCheckerSvc {
             },
         );
 
-        const promises = tokensToFetch.reduce((acc, tokenSymbol, amount: number) => {
+        const promises = tokensToFetch.reduce((acc, tokenSymbol) => {
             return [
                 ...acc,
                 ...Object.keys(this.tokensToFetch ? this.tokensToFetch[tokenSymbol] : []).map<any>((chainId) => {
@@ -217,7 +202,6 @@ class PriceCheckerSvc {
                                     return;
                                 }
 
-                                //[`${this.chainsData[chainId].CHAIN_NAME}${fromTokenData.symbol ? '(' + (fromTokenData.symbol) + ')' : ''}`] = withoutDecimals(JSON.parse(response).toTokenAmount, toTokenData.decimals);
                                 responseData[tokenSymbol][this.chainsData[chainId].CHAIN_NAME] = withoutDecimals(JSON.parse(response).toTokenAmount, toTokenData.decimals);
                                 resolve();
                             });
@@ -311,7 +295,7 @@ class PriceCheckerSvc {
             console.log('CAUGHT ERROR', e);
             this.rollbackQueue();
             console.warn('startSleep');
-            await this.sleep((SLEEP_PERIOD_IN_MS as unknown as number) - (CHECK_PERIOD_IN_MS as unknown as number));
+            await this.sleep(+(SLEEP_PERIOD_AFTER_API_ERROR_IN_MS as string) - +(CHECK_PERIOD_IN_MS as string));
             console.warn('endSleep');
             this.checkPricesByQueue();
             return null;
@@ -360,6 +344,34 @@ class PriceCheckerSvc {
             }
             return acc;
         }, {} as IComparedTokens);
+    }
+
+    async checkOnRestPeriod() {
+        if (new Date().getTime() - this.activeWorkTimer.getTime() >= +(ACTIVE_WORK_PERIOD_IN_MS as string)) {
+            console.log('START REST PERIOD');
+            await this.sleep(+(REST_PERIOD_IN_MS as string));
+            this.activeWorkTimer = new Date();
+            console.log('END REST PERIOD');
+        }
+    }
+
+    sleep(ms: number) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    nextQueueStep() {
+        const nextQueue = Object.keys(this.tokensToFetch || []).slice(
+            this.queue.current,
+            this.queue.current + Number(QUEUE_STEP) >= this.queue.max ? this.queue.max : this.queue.current + Number(QUEUE_STEP),
+        );
+
+        this.queue.current = this.queue.current + Number(QUEUE_STEP) >= this.queue.max ? 0 : this.queue.current + Number(QUEUE_STEP);
+
+        return nextQueue;
+    }
+
+    rollbackQueue() {
+        this.queue.current = this.queue.current - Number(QUEUE_STEP);
     }
 }
 

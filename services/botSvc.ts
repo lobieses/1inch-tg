@@ -23,7 +23,7 @@ class BotSvc {
         const response = this.priceDifferenceResponseCreator(triggeredTokens);
         listeners.forEach((listenerId: string) =>
             this.bot.telegram.sendMessage(listenerId, response).catch((e) => {
-                console.log('ERROR ON SEND MESSAGE!', e.on.payload.chat_id);
+                console.log('ERROR ON SEND MESSAGE!', e);
                 if (e.response.error_code === 403 || e.response.error_code === 400) {
                     DbSvc.removeListener(e.on.payload.chat_id);
                 }
