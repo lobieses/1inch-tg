@@ -1,6 +1,7 @@
 {
     "compilerOptions": {
         "target": "es2016",
+        "types": ["reflect-metadata"],
         "lib": ["es6"],
         "module": "commonjs",
         "rootDir": "./",
@@ -9,8 +10,11 @@
         "outDir": "dist",
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "node",
         "strict": true,
         "noImplicitAny": true,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true
     }
 }
