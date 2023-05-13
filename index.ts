@@ -1,7 +1,6 @@
 import express from 'express';
-import BotSvc from './services/botSvc';
-import DbSvc from './services/dbSvc';
-import PriceCheckerSvc from './services/priceCheckerSvc';
+import BotSvc from './services/bot/botSvc';
+import DbSvc from './services/db/dbSvc';
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -13,8 +12,8 @@ const start = async () => {
     try {
         app.listen(PORT, () => console.log(`App have been listening on ${PORT} port`));
         DbSvc.checkDbExisting();
-        BotSvc.createTgBotListener();
-        PriceCheckerSvc.fetchAddresses();
+        await BotSvc.prepareApp();
+        await BotSvc.startPriceListening();
     } catch (e) {
         console.log(e);
     }
