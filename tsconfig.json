@@ -1,20 +1,42 @@
 {
-    "compilerOptions": {
-        "target": "es2016",
-        "types": ["reflect-metadata"],
-        "lib": ["es6"],
-        "module": "commonjs",
-        "rootDir": "./",
-        "resolveJsonModule": true,
-        "allowJs": true,
-        "outDir": "dist",
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "moduleResolution": "node",
-        "strict": true,
-        "noImplicitAny": true,
-        "skipLibCheck": true,
-        "experimentalDecorators": true,
-        "emitDecoratorMetadata": true,
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  },
+  "compilerOptions": {
+    "target": "es2016",
+    "types": [
+      "reflect-metadata"
+    ],
+    "lib": [
+      "es6"
+    ],
+    "module": "commonjs",
+    "rootDir": "./",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "@services/*": [
+        "./services/*"
+      ],
+      "@constants/*": [
+        "./constants/*"
+      ],
+      "@type/*": [
+        "./types/*"
+      ],
+      "@di/*": [
+        "./DI/*"
+      ]
     }
+  }
 }
