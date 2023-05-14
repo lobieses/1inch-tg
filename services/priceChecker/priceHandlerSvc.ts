@@ -1,8 +1,9 @@
-import { IComparedTokens, ITokenData, ITokensInCheck, ITokensList, ITokensMap, ITokensToFind, IUSDTTokenMap } from './types';
+import { injectable } from 'inversify';
+import { IComparedTokens, ITokenData, ITokensInCheck, ITokensList, ITokensMap, ITokensToFind, IUSDTTokenMap } from '@type/types';
 import { findExtremes, percentageDifference } from './utils/math';
-import { ALLOWABLE_PERCENTAGE_DIFFERENCE } from '../../constants/constants';
+import { ALLOWABLE_PERCENTAGE_DIFFERENCE } from '@constants/constants';
 
-interface IPriceHandlerSvc {
+export interface IPriceHandlerSvc {
     handleFetchedTokensMap: (
         data: ITokensList,
         tokensToFind: ITokensToFind,
@@ -13,7 +14,8 @@ interface IPriceHandlerSvc {
     compareTokens: (tokens: ITokensInCheck) => IComparedTokens;
 }
 
-class PriceHandlerSvc implements IPriceHandlerSvc {
+@injectable()
+export class PriceHandlerSvc implements IPriceHandlerSvc {
     public handleFetchedTokensMap(data: ITokensList, tokensToFind: ITokensToFind) {
         const mapTemplate: ITokensMap = {};
 
@@ -53,7 +55,6 @@ class PriceHandlerSvc implements IPriceHandlerSvc {
                 USDTTokenMap: {},
             },
         );
-        console.log('sd', result.commonTokensMap);
         console.log('prepared tokens to fetch: ', Object.keys(result.commonTokensMap));
 
         return result;
@@ -88,5 +89,3 @@ class PriceHandlerSvc implements IPriceHandlerSvc {
         }, {});
     }
 }
-
-export default new PriceHandlerSvc();

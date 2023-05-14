@@ -1,10 +1,13 @@
-interface IQueueSvc<T> {
+import { injectable } from 'inversify';
+
+export interface IQueueSvc<T> {
     registerQueue: (elems: T[], stride: number) => void;
     next: () => T[];
     rollback: () => void;
 }
 
-class QueueSvc<T> implements IQueueSvc<T> {
+@injectable()
+export class QueueSvc<T> implements IQueueSvc<T> {
     private queue: T[] | null;
     private stride: number | null;
     private current: number;
@@ -44,5 +47,3 @@ class QueueSvc<T> implements IQueueSvc<T> {
         return;
     }
 }
-
-export default new QueueSvc();

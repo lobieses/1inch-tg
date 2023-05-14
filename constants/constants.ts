@@ -1,4 +1,4 @@
-import { IChainsData } from '../services/priceChecker/types';
+import { IChainsData } from '@type/types';
 
 export const ALLOWABLE_PERCENTAGE_DIFFERENCE = 1;
 

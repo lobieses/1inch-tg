@@ -1,13 +1,14 @@
 import https from 'https';
 import { IncomingMessage } from 'http';
+import { injectable, inject } from 'inversify';
 import { fetchTokens, requestQuote } from './utils/requestCreator';
 import { withDecimals, withoutDecimals, findExtremes } from './utils/math';
 
-import { IChainsData, IComparedTokens, ITokensInCheck, ITokensList, ITokenData, ITokensData, ITokensMap, IUSDTTokenMap, ITokensToFind } from './types';
+import { IChainsData, IComparedTokens, ITokensInCheck, ITokensList, ITokenData, ITokensData, ITokensMap, IUSDTTokenMap, ITokensToFind } from '@type/types';
+import { TYPES } from '../../DI/types';
+import { IPriceHandlerSvc } from '@services/priceChecker/priceHandlerSvc';
 
-import PriceHandlerSvc from './priceHandlerSvc';
-
-interface IPriceCheckerSvc {
+export interface IPriceCheckerSvc {
     prepareAddressesMap: (
         chainIds: string[],
         tokensToFind: ITokensToFind,
@@ -18,7 +19,10 @@ interface IPriceCheckerSvc {
     checkPrices: (nextQueue: string[], commonTokensMap: ITokensMap, USDTTokenMap: IUSDTTokenMap, chainsData: IChainsData) => Promise<IComparedTokens>;
 }
 
-class PriceCheckerSvc implements IPriceCheckerSvc {
+@injectable()
+export class PriceCheckerSvc implements IPriceCheckerSvc {
+    constructor(@inject(TYPES.IPriceHandlerSvc) private readonly priceHandlerSvc: IPriceHandlerSvc) {}
+
     public async prepareAddressesMap(chainIds: string[], tokensToFind: ITokensToFind) {
         const tokens = chainIds.reduce((acc, networkId) => {
             acc[networkId] = {};
@@ -52,7 +56,7 @@ class PriceCheckerSvc implements IPriceCheckerSvc {
             throw Error("CAN'T LOAD TOKENS!");
         });
 
-        return PriceHandlerSvc.handleFetchedTokensMap(tokens, tokensToFind);
+        return this.priceHandlerSvc.handleFetchedTokensMap(tokens, tokensToFind);
     }
 
     public async checkPrices(nextQueue: string[], commonTokensMap: ITokensMap, USDTTokenMap: IUSDTTokenMap, chainsData: IChainsData) {
@@ -120,7 +124,7 @@ class PriceCheckerSvc implements IPriceCheckerSvc {
             return responses;
         }, responseData);
 
-        return PriceHandlerSvc.compareTokens(finishResponse);
+        return this.priceHandlerSvc.compareTokens(finishResponse);
     }
 
     private async sendRequests(
@@ -207,5 +211,3 @@ class PriceCheckerSvc implements IPriceCheckerSvc {
         });
     }
 }
-
-export default new PriceCheckerSvc();

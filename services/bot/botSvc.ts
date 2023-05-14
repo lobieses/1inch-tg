@@ -1,29 +1,36 @@
 import { Telegraf } from 'telegraf';
-import DbSvc from '../db/dbSvc';
-import PriceCheckerSvc from '../priceChecker/priceCheckerSvc';
+import { injectable, inject } from 'inversify';
+import { IChainsData, IComparedTokens, ITokensMap, ITokensToFind, IUSDTTokenMap } from '@type/types';
+import { chainsData, tokensToFind } from '@constants/constants';
 
 import dotenv from 'dotenv';
-import { IChainsData, IComparedTokens, ITokensMap, ITokensToFind, IUSDTTokenMap } from '../priceChecker/types';
-import { chainsData, tokensToFind } from '../../constants/constants';
-import QueueSvc from '../queue/queueSvc';
+import { TYPES } from '../../DI/types';
+import { IDBSvc } from '@services/db/dbSvc';
+import { IPriceCheckerSvc } from '@services/priceChecker/priceCheckerSvc';
+import { IQueueSvc } from '@services/queue/queueSvc';
 
 dotenv.config();
 
 const { BOT_TOKEN, QUEUE_STEP, CHECK_PERIOD_IN_MS, SLEEP_PERIOD_AFTER_API_ERROR_IN_MS } = process.env;
 
-interface IBotSvc {
+export interface IBotSvc {
     prepareApp: () => Promise<void>;
     startPriceListening: () => void;
 }
 
-class BotSvc implements IBotSvc {
+@injectable()
+export class BotSvc implements IBotSvc {
     private readonly bot;
     private readonly chainsData: IChainsData;
     private tokensMap: ITokensMap | null;
     private USDTTokenMap: IUSDTTokenMap | null;
     private tokensToFind: ITokensToFind;
 
-    constructor() {
+    constructor(
+        @inject(TYPES.IDBSvc) private readonly dbSvc: IDBSvc,
+        @inject(TYPES.IPriceCheckerSvc) private readonly priceCheckerSvc: IPriceCheckerSvc,
+        @inject(TYPES.IQueueSvc) private readonly queueSvc: IQueueSvc<string>,
+    ) {
         this.bot = new Telegraf(BOT_TOKEN as string);
         this.tokensMap = null;
         this.USDTTokenMap = null;
@@ -31,22 +38,76 @@ class BotSvc implements IBotSvc {
         this.tokensToFind = tokensToFind;
     }
 
+    public async prepareApp() {
+        this.bot.start((ctx) =>
+            ctx.reply(
+                '🚀 Welcome to the Interport Cross-Chain Arbitrage Bot! 🚀\n\n' +
+                    "We're here to help you discover arbitrage opportunities across multiple chains in real-time. Stay tuned for notifications, and let's make the most of the cross-chain trading potential together! Happy trading! ",
+                {
+                    reply_markup: {
+                        inline_keyboard: [[{ text: 'Start listening', callback_data: 'start_listening' }]],
+                    },
+                },
+            ),
+        );
+
+        this.bot.action('start_listening', (ctx) => {
+            if (!ctx.update.callback_query.message) return;
+            if (this.dbSvc.isListenerExist(ctx.update.callback_query.message.chat.id)) {
+                ctx.editMessageText('You already listen prices');
+                return;
+            }
+            console.log('user joined', ctx.update.callback_query.from.username);
+            this.dbSvc.addListener(ctx.update.callback_query.message.chat.id);
+            ctx.editMessageText('You have been added to listeners');
+        });
+
+        this.bot.command('start_listening', (ctx) => {
+            if (this.dbSvc.isListenerExist(ctx.update.message.chat.id)) {
+                ctx.reply('You already listen prices');
+                return;
+            }
+            console.log('user joined', ctx.update.message.from.username);
+            this.dbSvc.addListener(ctx.update.message.chat.id);
+            ctx.reply('You have been added to listeners');
+        });
+
+        this.bot.command('stop_listening', (ctx) => {
+            if (!this.dbSvc.isListenerExist(ctx.update.message.chat.id)) {
+                ctx.reply("You don't listen prices yet");
+                return;
+            }
+            this.dbSvc.removeListener(ctx.update.message.chat.id);
+            ctx.reply('You have been removed from listeners');
+
+            if (!this.dbSvc.getListeners().length) {
+            }
+        });
+
+        console.log('users', this.dbSvc.getListeners());
+
+        const { commonTokensMap, USDTTokenMap } = await this.priceCheckerSvc.prepareAddressesMap(Object.keys(chainsData), this.tokensToFind);
+
+        this.tokensMap = commonTokensMap;
+        this.USDTTokenMap = USDTTokenMap;
+        this.queueSvc.registerQueue(Object.keys(commonTokensMap), Number(QUEUE_STEP) as unknown as number);
+    }
+
     public startPriceListening() {
         setTimeout(async () => {
             if (!this.tokensMap || !this.USDTTokenMap) {
                 throw new Error('Tokens not prepared yet');
             }
-            const nextQueue = QueueSvc.next();
+            const nextQueue = this.queueSvc.next();
             console.log('Next queue: ', nextQueue);
+
             let prices;
 
             try {
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                //@ts-ignore
-                prices = await PriceCheckerSvc.checkPrices(nextQueue, this.tokensMap, this.USDTTokenMap, this.chainsData);
+                prices = await this.priceCheckerSvc.checkPrices(nextQueue, this.tokensMap, this.USDTTokenMap, this.chainsData);
             } catch (e) {
                 console.log('CAUGHT ERROR', e);
-                QueueSvc.rollback();
+                this.queueSvc.rollback();
                 console.warn('startSleep');
 
                 await new Promise((resolve) => setTimeout(resolve, +(SLEEP_PERIOD_AFTER_API_ERROR_IN_MS as string) - +(CHECK_PERIOD_IN_MS as string)));
@@ -64,13 +125,13 @@ class BotSvc implements IBotSvc {
     }
 
     private sendPriceDifferenceTrigger(triggeredTokens: IComparedTokens) {
-        const listeners = DbSvc.getListeners();
+        const listeners = this.dbSvc.getListeners();
         const response = this.priceDifferenceResponseCreator(triggeredTokens);
         listeners.forEach((listenerId: string) =>
             this.bot.telegram.sendMessage(listenerId, response).catch((e) => {
                 console.log('ERROR ON SEND MESSAGE!', e);
                 if (e.response.error_code === 403 || e.response.error_code === 400) {
-                    DbSvc.removeListener(e.on.payload.chat_id);
+                    this.dbSvc.removeListener(e.on.payload.chat_id);
                 }
             }),
         );
@@ -95,61 +156,4 @@ class BotSvc implements IBotSvc {
             );
         }, '⚠ some tokens have difference more than 1% ⚠\n\n');
     }
-
-    public async prepareApp() {
-        this.bot.start((ctx) =>
-            ctx.reply(
-                '🚀 Welcome to the Interport Cross-Chain Arbitrage Bot! 🚀\n\n' +
-                    "We're here to help you discover arbitrage opportunities across multiple chains in real-time. Stay tuned for notifications, and let's make the most of the cross-chain trading potential together! Happy trading! ",
-                {
-                    reply_markup: {
-                        inline_keyboard: [[{ text: 'Start listening', callback_data: 'start_listening' }]],
-                    },
-                },
-            ),
-        );
-
-        this.bot.action('start_listening', (ctx) => {
-            if (!ctx.update.callback_query.message) return;
-            if (DbSvc.isListenerExist(ctx.update.callback_query.message.chat.id)) {
-                ctx.editMessageText('You already listen prices');
-                return;
-            }
-            console.log('user joined', ctx.update.callback_query.from.username);
-            DbSvc.addListener(ctx.update.callback_query.message.chat.id);
-            ctx.editMessageText('You have been added to listeners');
-        });
-
-        this.bot.command('start_listening', (ctx) => {
-            if (DbSvc.isListenerExist(ctx.update.message.chat.id)) {
-                ctx.reply('You already listen prices');
-                return;
-            }
-            console.log('user joined', ctx.update.message.from.username);
-            DbSvc.addListener(ctx.update.message.chat.id);
-            ctx.reply('You have been added to listeners');
-        });
-
-        this.bot.command('stop_listening', (ctx) => {
-            if (!DbSvc.isListenerExist(ctx.update.message.chat.id)) {
-                ctx.reply("You don't listen prices yet");
-                return;
-            }
-            DbSvc.removeListener(ctx.update.message.chat.id);
-            ctx.reply('You have been removed from listeners');
-
-            if (!DbSvc.getListeners().length) {
-            }
-        });
-
-        console.log('users', DbSvc.getListeners());
-
-        const { commonTokensMap, USDTTokenMap } = await PriceCheckerSvc.prepareAddressesMap(Object.keys(chainsData), this.tokensToFind);
-
-        this.tokensMap = commonTokensMap;
-        this.USDTTokenMap = USDTTokenMap;
-        QueueSvc.registerQueue(Object.keys(commonTokensMap), Number(QUEUE_STEP) as unknown as number);
-    }
 }
-
-export default new BotSvc();
